@@ -907,7 +907,7 @@ h2 {
   }
 
   .progress-step {
-    width: 100%;
+    width: auto;
     justify-content: flex-start;
   }
 
