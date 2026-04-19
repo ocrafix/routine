@@ -22,8 +22,8 @@ self.addEventListener('install', event => {
         './soin_vendredi.html',
         './soin_samedi.html',
         './soin_dimanche.html',
+        './style.css',
         './muscu.js',
-        './soin.css',
         './manifest.json',
         'icons/icon-512.png',
         'icons/icon-192.png'
