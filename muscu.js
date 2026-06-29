@@ -13,13 +13,22 @@
   const notesField = document.querySelector("[data-notes-field]");
   const notesStatus = document.querySelector("[data-notes-status]");
   const workoutCards = document.querySelectorAll(".workout-card");
+  const programTabs = document.querySelectorAll("[data-program-tab]");
+  const programPanels = document.querySelectorAll("[data-program-panel]");
 
   const notesStorageKey = `muscu-notes-${pageKey}`;
   const timerStorageKey = `muscu-timer-${pageKey}`;
+  const programStorageKey = `muscu-program-${pageKey}`;
 
   let totalSeconds = 0;
   let remainingSeconds = 0;
   let intervalId = null;
+  let timerBubble = null;
+  let floatingTimerDisplay = null;
+  let floatingTimerLabel = null;
+  let floatingTimerPauseButton = null;
+  let floatingTimerResetButton = null;
+  let hideBubbleTimeoutId = null;
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -27,6 +36,111 @@
     const minutes = Math.floor(value / 60).toString().padStart(2, "0");
     const seconds = (value % 60).toString().padStart(2, "0");
     if (timerDisplay) timerDisplay.textContent = `${minutes}:${seconds}`;
+    if (floatingTimerDisplay) floatingTimerDisplay.textContent = `${minutes}:${seconds}`;
+  };
+
+  const createFloatingTimer = () => {
+    if (!timerDisplay) return;
+
+    timerBubble = document.createElement("div");
+    timerBubble.className = "floating-timer";
+    timerBubble.hidden = true;
+    timerBubble.setAttribute("role", "status");
+    timerBubble.setAttribute("aria-live", "polite");
+
+    const textWrapper = document.createElement("div");
+    textWrapper.className = "floating-timer-text";
+
+    floatingTimerLabel = document.createElement("span");
+    floatingTimerLabel.className = "floating-timer-label";
+    floatingTimerLabel.textContent = "Repos en cours";
+
+    floatingTimerDisplay = document.createElement("strong");
+    floatingTimerDisplay.className = "floating-timer-time";
+    floatingTimerDisplay.textContent = timerDisplay.textContent;
+
+    const actionsWrapper = document.createElement("div");
+    actionsWrapper.className = "floating-timer-actions";
+
+    floatingTimerPauseButton = document.createElement("button");
+    floatingTimerPauseButton.className = "mini-button";
+    floatingTimerPauseButton.type = "button";
+    floatingTimerPauseButton.textContent = "Pause";
+
+    floatingTimerResetButton = document.createElement("button");
+    floatingTimerResetButton.className = "mini-button secondary";
+    floatingTimerResetButton.type = "button";
+    floatingTimerResetButton.textContent = "Stop";
+
+    textWrapper.append(floatingTimerLabel, floatingTimerDisplay);
+    actionsWrapper.append(floatingTimerPauseButton, floatingTimerResetButton);
+    timerBubble.append(textWrapper, actionsWrapper);
+    document.body.appendChild(timerBubble);
+  };
+
+  const setFloatingTimerVisible = (isVisible) => {
+    if (!timerBubble) return;
+
+    window.clearTimeout(hideBubbleTimeoutId);
+    timerBubble.hidden = !isVisible;
+  };
+
+  const updateFloatingTimerState = (label, pauseText = "Pause") => {
+    if (floatingTimerLabel) floatingTimerLabel.textContent = label;
+    if (floatingTimerPauseButton) floatingTimerPauseButton.textContent = pauseText;
+  };
+
+  const activateProgramTab = (programId, shouldPersist = true) => {
+    if (!programId) return;
+
+    programTabs.forEach((button) => {
+      const isActive = button.dataset.programTab === programId;
+      button.classList.toggle("active", isActive);
+      button.setAttribute("aria-selected", String(isActive));
+      button.tabIndex = isActive ? 0 : -1;
+    });
+
+    programPanels.forEach((panel) => {
+      panel.hidden = panel.dataset.programPanel !== programId;
+      panel.classList.toggle("active", panel.dataset.programPanel === programId);
+    });
+
+    if (shouldPersist) {
+      localStorage.setItem(programStorageKey, programId);
+    }
+  };
+
+  const initializeProgramTabs = () => {
+    if (!programTabs.length || !programPanels.length) return;
+
+    const savedProgramId = localStorage.getItem(programStorageKey);
+    const availableProgramIds = Array.from(programTabs).map((button) => button.dataset.programTab);
+    const defaultProgramId = availableProgramIds[0];
+    const initialProgramId = availableProgramIds.includes(savedProgramId) ? savedProgramId : defaultProgramId;
+
+    activateProgramTab(initialProgramId, false);
+
+    programTabs.forEach((button, index) => {
+      button.addEventListener("click", () => {
+        activateProgramTab(button.dataset.programTab);
+      });
+
+      button.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+
+        event.preventDefault();
+
+        let nextIndex = index;
+        if (event.key === "ArrowRight") nextIndex = (index + 1) % programTabs.length;
+        if (event.key === "ArrowLeft") nextIndex = (index - 1 + programTabs.length) % programTabs.length;
+        if (event.key === "Home") nextIndex = 0;
+        if (event.key === "End") nextIndex = programTabs.length - 1;
+
+        const nextButton = programTabs[nextIndex];
+        nextButton.focus();
+        activateProgramTab(nextButton.dataset.programTab);
+      });
+    });
   };
 
   const persistTimerInputs = () => {
@@ -65,6 +179,21 @@
     intervalId = null;
   };
 
+  const pauseTimer = () => {
+    stopTimer();
+
+    if (remainingSeconds > 0) {
+      updateFloatingTimerState("Repos en pause", "Reprendre");
+      setFloatingTimerVisible(true);
+    }
+  };
+
+  const resetTimer = () => {
+    stopTimer();
+    syncTimerFromInputs();
+    setFloatingTimerVisible(false);
+  };
+
   const playEndSound = () => {
     try {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -100,6 +229,11 @@
     stopTimer();
     remainingSeconds = 0;
     renderTime(0);
+    updateFloatingTimerState("Repos termin\u00e9", "Relancer");
+    setFloatingTimerVisible(true);
+    hideBubbleTimeoutId = window.setTimeout(() => {
+      setFloatingTimerVisible(false);
+    }, 2200);
     playEndSound();
 
     if ("vibrate" in navigator) {
@@ -112,6 +246,8 @@
     if (remainingSeconds <= 0) return;
 
     stopTimer();
+    updateFloatingTimerState("Repos en cours", "Pause");
+    setFloatingTimerVisible(true);
     intervalId = window.setInterval(() => {
       remainingSeconds -= 1;
       renderTime(remainingSeconds);
@@ -259,6 +395,9 @@
     });
   });
 
+  createFloatingTimer();
+  initializeProgramTabs();
+
   presetButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const seconds = parseInt(button.dataset.timerPreset || "0", 10) || 0;
@@ -277,13 +416,24 @@
   if (minutesInput) minutesInput.addEventListener("input", syncTimerFromInputs);
   if (secondsInput) secondsInput.addEventListener("input", syncTimerFromInputs);
   if (startButton) startButton.addEventListener("click", startTimer);
-  if (pauseButton) pauseButton.addEventListener("click", stopTimer);
+  if (pauseButton) pauseButton.addEventListener("click", pauseTimer);
 
   if (resetButton) {
-    resetButton.addEventListener("click", () => {
-      stopTimer();
-      syncTimerFromInputs();
+    resetButton.addEventListener("click", resetTimer);
+  }
+
+  if (floatingTimerPauseButton) {
+    floatingTimerPauseButton.addEventListener("click", () => {
+      if (intervalId) {
+        pauseTimer();
+      } else {
+        startTimer();
+      }
     });
+  }
+
+  if (floatingTimerResetButton) {
+    floatingTimerResetButton.addEventListener("click", resetTimer);
   }
 
   if (notesField) notesField.addEventListener("input", saveNotes);
