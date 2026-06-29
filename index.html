@@ -34,5 +34,14 @@
       <a class="jour-card" href="jour_dimanche.html"><h2>Dimanche</h2><p>Soin</p><span class="cta">Ouvrir la page</span></a>
     </section>
   </main>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+          console.error("Impossible d'enregistrer le service worker.", error);
+        });
+      });
+    }
+  </script>
 </body>
 </html>
